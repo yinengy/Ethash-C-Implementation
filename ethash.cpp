@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <malloc.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #define WORD_BYTES 4  // bytes in word
 #define DATASET_BYTES_INIT (1 << 30)  // bytes in dataset at genesis
@@ -37,6 +39,24 @@ char *strrev(char *str)
     return str;
 }
 
+// convert a hex encoded byte array to int
+int decode_int(char * s) {
+    if (!s) {
+        return 0;
+    }
+
+    char hex[8];
+
+    // convert byte array to hex string
+    // here consider little endian
+    sprintf(hex, "%02X%02X%02X%02X", s[3], s[2], s[1], s[0]);
+
+    int number = (int) strtol(hex, NULL, 16);
+
+    return number;
+}
+
+// return a hex encoded byte array of the int
 char *encode_int(int s) {
     if (s == 0) {
         return "";
