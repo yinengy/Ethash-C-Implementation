@@ -1,9 +1,7 @@
-#include <math.h> 
-#include <stdio.h>
-#include <malloc.h>
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <malloc.h>
+#include <string.h>
 
 #define WORD_BYTES 4  // bytes in word
 #define DATASET_BYTES_INIT (1 << 30)  // bytes in dataset at genesis
@@ -90,6 +88,24 @@ char *encode_int(int s) {
     return r; 
 }
 
+char *zpad(char *s, int length) {
+    int num_pad = length - strlen(s);
+
+    if (num_pad <= 0) {
+        return s;
+    }
+
+    char *padded_hex = (char *) malloc(num_pad * 2 + strlen(s) + 1);
+
+    strcpy(padded_hex, s); 
+
+    // pad zeros (little endian, so at the end)
+    for (int i = 0; i < num_pad; i++) {
+        strcat(padded_hex, "\x00");
+    }
+        
+    return padded_hex;
+}
 
 struct Block {
     int number;
