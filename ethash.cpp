@@ -90,6 +90,7 @@ char *encode_int(int s) {
 }
 
 // pad \x00 at the end of the string to length
+// return a new string
 // will malloc string
 char *zpad(char *s, int length) {
     int num_pad = length - strlen(s);
@@ -111,6 +112,7 @@ char *zpad(char *s, int length) {
 }
 
 // convert given int array to a long hex encoded byte array
+// return byte array
 char *serialize_hash(int *h, int length) {
     char *hash = (char *) malloc(4 * length + 1);
 
@@ -123,6 +125,30 @@ char *serialize_hash(int *h, int length) {
         free(temp);
         free(temp2);
     }
+
+    return hash;
+}
+
+// convert a long hex encoded byte array to int array
+// l is a pointer to length of the array, compute by this function
+// return int array
+// will malloc int array
+int * deserialize_hash(int *l, char *h) {
+    // each int correspoding to 4 bytes in bytes array
+    int length = strlen(h) / 4;
+    int *hash = (int *) malloc(length * sizeof(int));
+
+    // convert each 4 bytes to int
+    char *pos = h;
+
+    for (int i = 0; i < strlen(h) / 4; i++) {
+        char temp[4];
+        strncpy(temp, pos, 4);
+
+        hash[i] = decode_int(temp);
+    }
+
+    *l = length;
 
     return hash;
 }
