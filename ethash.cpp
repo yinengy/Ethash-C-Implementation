@@ -133,7 +133,7 @@ char *serialize_hash(int *h, int length) {
 // l is a pointer to length of the array, compute by this function
 // return int array
 // will malloc int array
-int * deserialize_hash(int *l, char *h) {
+int *deserialize_hash(int *l, char *h) {
     // each int correspoding to 4 bytes in bytes array
     int length = strlen(h) / 4;
     int *hash = (int *) malloc(length * sizeof(int));
@@ -151,6 +151,17 @@ int * deserialize_hash(int *l, char *h) {
     *l = length;
 
     return hash;
+}
+
+// hash the int array by function h
+// sz is the size of x
+// h is a function pointer to hash function
+// will return int array
+// l is a pointer for returned array, compute by this function
+// TODO: check malloc and free
+int *hash_words(int *l, char *h(char *), int sz, int *x) {
+    char* y = h(serialize_hash(x, sz));
+    return deserialize_hash(l, y);
 }
 
 struct Block {
