@@ -55,6 +55,7 @@ int decode_int(char * s) {
 }
 
 // return a hex encoded byte array of the int
+// will malloc string
 char *encode_int(int s) {
     if (s == 0) {
         return "";
@@ -88,6 +89,8 @@ char *encode_int(int s) {
     return r; 
 }
 
+// pad \x00 at the end of the string to length
+// will malloc string
 char *zpad(char *s, int length) {
     int num_pad = length - strlen(s);
 
@@ -101,10 +104,27 @@ char *zpad(char *s, int length) {
 
     // pad zeros (little endian, so at the end)
     for (int i = 0; i < num_pad; i++) {
-        strcat(padded_hex, "\x00");
+        strcat(padded_hex, "\\x00"); // TODO: check this
     }
         
     return padded_hex;
+}
+
+// convert given int array to a long hex encoded byte array
+char *serialize_hash(int *h, int length) {
+    char *hash = (char *) malloc(4 * length + 1);
+
+    for (int i = 0; i < length; i++) {
+        char *temp = encode_int(h[i]);
+        char *temp2 = zpad(temp, 4);
+
+        strcat(hash, temp2);
+
+        free(temp);
+        free(temp2);
+    }
+
+    return hash;
 }
 
 struct Block {
