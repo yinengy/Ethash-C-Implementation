@@ -77,12 +77,17 @@ char *encode_int(int s, int pad_length) {
     // pad 0 at begin to make len be even
     char padded_hex[8];
 
+    // fix bug here: use strcat or strcpy leads to core dump in gem5
     if (hex_len % 2 == 1) {
-        strcpy(padded_hex, "0"); 
-        strcat(padded_hex, hex);
+        padded_hex[0] = '0';
+        for (int i = 0; i < hex_len; i++) {
+            padded_hex[i+1] = hex[i];
+        }    
         hex_len += 1;
     } else {
-        strcpy(padded_hex, hex);
+        for (int i = 0; i < hex_len; i++) {
+            padded_hex[i] = hex[i];
+        }
     }
 
     // convert hex string to bytearray, little endian
