@@ -17,8 +17,8 @@
 #define ACCESSES 64  // number of accesses in hashimoto loop
 
 
-// Credit: https://stackoverflow.com/questions/8534274/is-the-strrev-function-not-available-in-linux
-char *strrev(char *str)
+// Credit: https://stackoverflow.com/questions/8534274/is-the-_strrev-function-not-available-in-linux
+char *_strrev(char *str)
 {
     if (!str || ! *str)
         return str;
@@ -84,7 +84,7 @@ char *encode_int(int s) {
     }
 
     char * r = (char *) malloc(strlen(bytearray) + 1);
-    strcpy(r, strrev(bytearray)); // little endian
+    strcpy(r, _strrev(bytearray)); // little endian
     
     return r; 
 }
@@ -105,7 +105,7 @@ char *zpad(char *s, int length) {
 
     // pad zeros (little endian, so at the end)
     for (int i = 0; i < num_pad; i++) {
-        strcat(padded_hex, "\\x00"); // TODO: check this
+        strcat(padded_hex, "\0"); // TODO: check this
     }
         
     return padded_hex;
@@ -167,3 +167,36 @@ int *hash_words(int *l, char *h(char *), int sz, int *x) {
 struct Block {
     int number;
 };
+
+char *get_seedhash(struct Block block) {
+    char *s = malloc(32);
+    for (int i = 0; i < 32; i++) {
+        s[i] = '\0';
+    }
+
+    // no need to implement this for block.number = 1
+    // for (int i = 0; i < block.number / EPOCH_LENGTH; i++) {
+    //     s = 
+    // }
+    return s;
+}
+
+int main() {
+    int header_size = 508 + 8 * 5;
+
+    struct Block block = {1};
+
+    // create byte array with header_size
+    char *header = malloc(header_size);
+    for (int i = 0; i < header_size; i++) {
+        header = '\0';
+    }
+
+    int difficulty = 0x4000;
+
+    int cache_size = 16776896;
+    int full_size = 16776896;
+    char *seedhash = get_seedhash(block);
+    printf("Prepare cache...");
+    int* cache = mkcache(cache_size, seedhash);
+}
