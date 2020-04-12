@@ -105,10 +105,9 @@ char *encode_int(int s, int pad_length) {
     }
 
     int a = decode_int(bytearray);
-    printf("%h", a);
-    if (a != s) {
-        exit(1);
-    }
+    //if (a != s) {
+    //    exit(1);
+    //}
     
     return bytearray;
 }
@@ -261,6 +260,6 @@ int main() {
     int full_size = 16776896;
     char *seedhash = get_seedhash(block);
     printf("Prepare cache...");
-    int* cache = mkcache(cache_size, seedhash);
+    unsigned int **cache = mkcache(cache_size, seedhash);
     printf("Prepare full dataset... Could take a few hours, please be patient.");
 }
