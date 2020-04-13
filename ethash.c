@@ -43,7 +43,7 @@
 // convert a byte array to int
 // input: byte array
 // output: corresponding int
-int decode_int(char * s) {
+int decode_int(char* s) {
     if (!s) {
         return 0;
     }
@@ -52,9 +52,9 @@ int decode_int(char * s) {
 
     // convert byte array to hex string
     // here consider little endian
-    snprintf(hex, 9, "%02x%02x%02x%02x", (unsigned char) s[3], 
-        (unsigned char) s[2], (unsigned char) s[1], (unsigned char)s[0]);
-    int number = (int) strtol(hex, NULL, 16);
+    snprintf(hex, 9, "%02x%02x%02x%02x", (unsigned char)s[3],
+        (unsigned char)s[2], (unsigned char)s[1], (unsigned char)s[0]);
+    int number = (int)strtol(hex, NULL, 16);
 
     return number;
 }
@@ -65,7 +65,7 @@ int decode_int(char * s) {
 //        pad_length : = length to pad by '\0' (should not < 4)
 // output: byte array
 // note: will malloc string
-char *encode_int(int s, int pad_length) {
+char* encode_int(int s, int pad_length) {
     if (s == 0) {
         return "";
     }
@@ -83,24 +83,25 @@ char *encode_int(int s, int pad_length) {
     if (hex_len % 2 == 1) {
         padded_hex[0] = '0';
         for (int i = 0; i < hex_len; i++) {
-            padded_hex[i+1] = hex[i];
-        }    
+            padded_hex[i + 1] = hex[i];
+        }
         hex_len += 1;
-    } else {
+    }
+    else {
         for (int i = 0; i < hex_len; i++) {
             padded_hex[i] = hex[i];
         }
     }
 
     // convert hex string to bytearray, little endian
-    char *bytearray  = malloc(pad_length);
+    char* bytearray = malloc(pad_length);
     char bytearray_t[pad_length];
-    char *pos = padded_hex;
+    char* pos = padded_hex;
 
     int num_pad = pad_length - (hex_len / 2);
 
     for (int count = 1; count <= (hex_len / 2); count++) {
-        sscanf((unsigned char*) pos, "%2hhx", &bytearray[pad_length - num_pad - count]);
+        sscanf((unsigned char*)pos, "%2hhx", &bytearray[pad_length - num_pad - count]);
         sscanf((unsigned char*)pos, "%2hhx", &bytearray_t[pad_length - num_pad - count]);
         pos += 2;
     }
@@ -115,7 +116,7 @@ char *encode_int(int s, int pad_length) {
     //if (a != s) {
     //    exit(1);
     //}
-    
+
     return bytearray;
 }
 
@@ -123,11 +124,11 @@ char *encode_int(int s, int pad_length) {
 // convert given int array to a long hex encoded byte array
 // input: int array and its length
 // output: byte array
-char *serialize_hash(int *h, int length) {
-    char *hash = (char *) malloc(4 * length);
+char* serialize_hash(int* h, int length) {
+    char* hash = (char*)malloc(4 * length);
 
     for (int i = 0; i < length; i++) {
-        char *temp = encode_int(h[i], 4);
+        char* temp = encode_int(h[i], 4);
 
         strcat(hash, temp);
     }
@@ -140,12 +141,12 @@ char *serialize_hash(int *h, int length) {
 // input: byte array and its length
 // output int array
 // note: will malloc int array
-int *deserialize_hash(char *h, int length) {
+int* deserialize_hash(char* h, int length) {
     // each int correspoding to 4 bytes in bytes array
-    int *hash = (int *) malloc(length * sizeof(int));
+    int* hash = (int*)malloc(length * sizeof(int));
 
     // convert each 4 bytes to int
-    char *pos = h;
+    char* pos = h;
 
     for (int i = 0; i < strlen(h) / 4; i++) {
         char temp[4];
@@ -164,7 +165,7 @@ int *deserialize_hash(char *h, int length) {
 // will return int array
 // l is a pointer for returned array, compute by this function
 // TODO: check malloc and free
-int *hash_words(char *h(char *, int), int size, char *x) {
+int* hash_words(char* h(char*, int), int size, char* x) {
     char* y = h(x, size);
     return deserialize_hash(y, 16);
 }
@@ -180,7 +181,7 @@ int* hash_words_list(char* h(char*, int), int size, int* x) {
 
 // A warpper for sha3_HashBuffer() in lib/sha3.h
 // will be used by sha3_512 as a function pointer
-char *sha3_512_wrapper(char *x, int size) {
+char* sha3_512_wrapper(char* x, int size) {
     char* out = malloc(512);
     sha3_HashBuffer(512, SHA3_FLAGS_KECCAK, x, size, out, 512);
     return out;
@@ -190,11 +191,11 @@ char *sha3_512_wrapper(char *x, int size) {
 // sha3 hash function, outputs 64 bytes
 // input: a byte array pointer or int array pointer
 // if is_list != 0, it means x is a int array
-int *sha3_512(void *x, int is_list) {
+int* sha3_512(void* x, int is_list) {
     if (is_list != 0) {
-        return hash_words_list(sha3_512_wrapper, 64, (int *) x);
+        return hash_words_list(sha3_512_wrapper, 64, (int*)x);
     }
-    return hash_words(sha3_512_wrapper, 32, (char *) x);
+    return hash_words(sha3_512_wrapper, 32, (char*)x);
 }
 
 
@@ -203,7 +204,7 @@ struct Block {
 };
 
 int fnv(int v1, int v2) {
-    return (int) pow(((v1 * FNV_PRIME) ^ v2) % 2, 32);
+    return (int)pow(((v1 * FNV_PRIME) ^ v2) % 2, 32);
 }
 
 // generate (typically 1GB) dataset based on (typically 16MB) cache
@@ -213,7 +214,7 @@ int fnv(int v1, int v2) {
 // output: int array
 int* calc_dataset(int full_size, int** cache, int cache_size) {
     int loop_times = full_size / HASH_BYTES;
-    int **o = malloc(sizeof(int *) * loop_times);
+    int** o = malloc(sizeof(int*) * loop_times);
 
     for (int i = 0; i < full_size / HASH_BYTES; i++) {
         calc_dataset_item(cache, cache_size, i);
@@ -230,11 +231,11 @@ unsigned int** mkcache(int cache_size, char* seed) {
     int n = cache_size / HASH_BYTES;
 
     // Sequentially produce the initial dataset
-    unsigned int **o = malloc(sizeof(int *) * n);
+    unsigned int** o = malloc(sizeof(int*) * n);
     o[0] = sha3_512(seed, 0);
 
     for (int i = 1; i < n; i++) {
-        o[i] = sha3_512(o[i-1], 1);
+        o[i] = sha3_512(o[i - 1], 1);
     }
 
     // Use a low - round version of randmemohash
@@ -259,8 +260,8 @@ unsigned int** mkcache(int cache_size, char* seed) {
 
 // generate seedhash based on block number
 // input: block struct
-char *get_seedhash(struct Block block) {
-    char *s = malloc(32);
+char* get_seedhash(struct Block block) {
+    char* s = malloc(32);
     for (int i = 0; i < 32; i++) {
         s[i] = '\0';
     }
@@ -275,10 +276,10 @@ char *get_seedhash(struct Block block) {
 int main() {
     int header_size = 508 + 8 * 5;
 
-    struct Block block = {1};
+    struct Block block = { 1 };
 
     // create byte array with header_size
-    char *header = malloc(header_size);
+    char* header = malloc(header_size);
     for (int i = 0; i < header_size; i++) {
         header = '\0';
     }
@@ -287,9 +288,9 @@ int main() {
 
     int cache_size = 16776896;
     int full_size = 16776896;
-    char *seedhash = get_seedhash(block);
+    char* seedhash = get_seedhash(block);
     printf("Prepare cache...\n");
-    unsigned int **cache = mkcache(cache_size, seedhash);
+    unsigned int** cache = mkcache(cache_size, seedhash);
     printf("Prepare full dataset... Could take a few hours, please be patient.\n");
     unsigned int** dataset = calc_dataset(full_size, cache);
     printf("Algorithm ends.\n");
