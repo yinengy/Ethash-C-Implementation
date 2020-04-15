@@ -3,7 +3,9 @@
 #include <malloc.h>
 #include <math.h>  // pow
 #include <string.h>
+#include <inttypes.h> // uint64
 #include "lib/sha3.h" // Credit: https://github.com/brainhub/SHA3IUF/blob/master/sha3.h
+#include "lib/mt64.h" // http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/emt64.html
 
 #define WORD_BYTES 4  // bytes in word
 #define DATASET_BYTES_INIT (1 << 30)  // bytes in dataset at genesis
@@ -287,7 +289,6 @@ unsigned int** mkcache(int cache_size, char* seed) {
 
 
 
-
 // generate seedhash based on block number
 // input: block struct
 char* get_seedhash(struct Block block) {
@@ -303,6 +304,44 @@ char* get_seedhash(struct Block block) {
     return s;
 }
 
+
+// mine a block
+// input: full_size: size of dataset
+//        dataset: int array
+//        header: header of the block
+//        difficulty: difficulty to mine the block
+// output: nonce, if not found in given times, return 0
+// Note: difficulty is acutally a fixed number in this function, see comment below
+uint64_t mine(int full_size, int** dataset, char* header, int difficulty) {
+    // in python: "2 ** 256 // difficulty" = 256
+    // no int256 support in C, so difficulty actually is fixed in this program
+    // TODO: should be fixed in the future
+    // currently can only do this calculation by hand
+    int target = 256;
+
+    // randint(0, 2 ** 64)
+    uint64_t nonce = genrand64_int64();
+
+    int i = 0;
+
+    while (decode_int(hashimoto_full(full_size, dataset, header, nonce)) > 256) {
+        // in python "nonce = (nonce + 1) % 2 ** 64"
+        // no need to do the mod by exploiting the overflow in uint64_t
+        nonce += 1;
+        i += 1;
+
+        if (i > 10) {
+            printf("tried 10 times without finding solution, give up.\n");
+            return 0;
+        }
+    }
+
+    printf("tried %d times. Found solution with nonce = %x\n", i, nonce);
+
+    return nonce;
+}
+
+
 int main() {
     int header_size = 508 + 8 * 5;
 
@@ -314,10 +353,12 @@ int main() {
         header = '\0';
     }
 
+    // difficulty in genesis block
+    // Credit: https://lightrains.com/blogs/setup-local-ethereum-blockchain-private-testnet
     int difficulty = 0x4000;
 
-    int cache_size = 16770;
-    int full_size = 16776896;
+    int cache_size = 1677;
+    int full_size = 16776;
     char* seedhash = get_seedhash(block);
     printf("Step (1/3): Make cache (around 16MB)... \n");
     unsigned int** cache = mkcache(cache_size, seedhash);
@@ -326,7 +367,7 @@ int main() {
     unsigned int** dataset = calc_dataset(full_size, cache, cache_size);
     printf("Step (2/3) finished.\n");
     printf("Step (3/3) mine a block...");
-    printf("Not Implemente, skip.");
+    uint64_t nonce = mine(full_size, dataset, header, difficulty);
     printf("Step (3/3) finished.\n");
     printf("\nAlgorithm ends.\n");
 
