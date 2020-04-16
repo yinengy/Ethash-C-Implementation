@@ -7,6 +7,13 @@
 #include "lib/sha3.h" // Credit: https://github.com/brainhub/SHA3IUF/blob/master/sha3.h
 #include "lib/mt64.h" // http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/emt64.html
 
+// change this for testing
+#define CACHE_SIZE 1024     // cache size (should be around 16MB)
+#define DATASET_SIZE 10240  // dataset size (shoule be around 1GB)
+#define TIME_LIMIT  100  // maximum times of mining, will give up if reach this limit
+#define PRINT_RESULT    // if define, will print result of each try on mining
+
+// fixed parameter in spec
 #define WORD_BYTES 4  // bytes in word
 #define DATASET_BYTES_INIT (1 << 30)  // bytes in dataset at genesis
 #define DATASET_BYTES_GROWTH (1 << 23)  // dataset growth per epoch
@@ -97,27 +104,71 @@ char* encode_int(int s, int pad_length) {
 
     // convert hex string to bytearray, little endian
     char* bytearray = malloc(pad_length);
-    char bytearray_t[pad_length];
     char* pos = padded_hex;
 
     int num_pad = pad_length - (hex_len / 2);
 
     for (int count = 1; count <= (hex_len / 2); count++) {
         sscanf((unsigned char*)pos, "%2hhx", &bytearray[pad_length - num_pad - count]);
-        sscanf((unsigned char*)pos, "%2hhx", &bytearray_t[pad_length - num_pad - count]);
         pos += 2;
     }
 
     // pad '0/'
     for (int count = (hex_len / 2) + 1; count <= pad_length; count++) {
         bytearray[count] = '\0';
-        bytearray_t[count] = '\0';
     }
 
-    int a = decode_int(bytearray);
-    //if (a != s) {
-    //    exit(1);
-    //}
+    return bytearray;
+}
+
+
+// encode uint64 to byte array (padded to 8 bytes)
+// input: s : uint64 to covert
+// output: 8 bytes char array
+// note: will malloc string
+char* encode_int64(uint64_t s) {
+    if (s == 0) {
+        return "";
+    }
+
+    char hex[16];
+
+    // convert s to hex string
+    int hex_len = snprintf(hex, 17, "%lx", s);
+
+
+    // pad 0 at begin to make len be even
+    char padded_hex[16];
+
+    // fix bug here: use strcat or strcpy leads to core dump in gem5
+    if (hex_len % 2 == 1) {
+        padded_hex[0] = '0';
+        for (int i = 0; i < hex_len; i++) {
+            padded_hex[i + 1] = hex[i];
+        }
+        hex_len += 1;
+    }
+    else {
+        for (int i = 0; i < hex_len; i++) {
+            padded_hex[i] = hex[i];
+        }
+    }
+
+    // convert hex string to bytearray, little endian
+    char* bytearray = malloc(8);
+    char* pos = padded_hex;
+
+    int num_pad = 8 - (hex_len / 2);
+
+    for (int count = 1; count <= (hex_len / 2); count++) {
+        sscanf((unsigned char*)pos, "%2hhx", &bytearray[8 - num_pad - count]);
+        pos += 2;
+    }
+
+    // pad '0/'
+    for (int count = (hex_len / 2) + 1; count <= 8; count++) {
+        bytearray[count] = '\0';
+    }
 
     return bytearray;
 }
@@ -190,14 +241,16 @@ char* sha3_512_wrapper(char* x, int size) {
 }
 
 
-// sha3 hash function, outputs 64 bytes
-// input: a byte array pointer or int array pointer
-// if is_list != 0, it means x is a int array
-int* sha3_512(void* x, int is_list) {
+// sha3 hash function, outputs 32/64 bytes
+// input: x: char * or int *
+//        is: if is_256 != 0, it means sha3_512, otherwise sha3_256
+//        is_list: if is_list != 0, it means x is a int array
+//        size: size of x
+int* sha3(int is_256, void* x, int is_list, int size) {
     if (is_list != 0) {
-        return hash_words_list(sha3_512_wrapper, 64, (int*)x);
+        return hash_words_list(sha3_512_wrapper, size, (int*)x);
     }
-    return hash_words(sha3_512_wrapper, 32, (char*)x);
+    return hash_words(sha3_512_wrapper, size, (char*)x);
 }
 
 
@@ -222,7 +275,7 @@ unsigned int* calc_dataset_item(unsigned int** cache, int len, int i) {
     mix[0] ^= i;
 
     // sha3 malloc int array, so need to free it
-    unsigned int* temp = sha3_512(mix, 1);
+    unsigned int* temp = sha3(0, mix, 1, 64);
     memcpy(mix, temp, 64);
     free(temp);
 
@@ -236,7 +289,7 @@ unsigned int* calc_dataset_item(unsigned int** cache, int len, int i) {
 
     }
 
-    return sha3_512(mix, 1);
+    return sha3(0, mix, 1, 64);
 }
 
 // generate (typically 1GB) dataset based on (typically 16MB) cache
@@ -264,10 +317,10 @@ unsigned int** mkcache(int cache_size, char* seed) {
 
     // Sequentially produce the initial dataset
     unsigned int** o = malloc(sizeof(int*) * n);
-    o[0] = sha3_512(seed, 0);
+    o[0] = sha3(0, seed, 0, 32);
 
     for (int i = 1; i < n; i++) {
-        o[i] = sha3_512(o[i - 1], 1);
+        o[i] = sha3(0, o[i - 1], 1, 64);
     }
 
     // Use a low - round version of randmemohash
@@ -280,11 +333,81 @@ unsigned int** mkcache(int cache_size, char* seed) {
             for (int k = 0; k < 16; k++) {
                 temp[k] = o[(j - 1 + n) % n][k] ^ o[v][k];
             }
-            o[j] = sha3_512(temp, 1);
+            o[j] = sha3(0, temp, 1, 64);
         }
     }
 
     return o;
+}
+
+char* hashimoto_full(int full_size, unsigned int** dataset, char* header, int header_size, uint64_t nonce) {
+    int n = full_size / HASH_BYTES;
+    int w = MIX_BYTES / WORD_BYTES;
+    int mixhashes = MIX_BYTES / HASH_BYTES;
+
+    // combine header + nonce into a 64 byte seed
+    char* nonce_encoded = encode_int64(nonce);
+    char seed[header_size + 8];
+    for (int i = 0; i < header_size; i++) {
+        seed[i] = header[i];
+    }
+
+    for (int i = 0; i < 8; i++) {
+        seed[header_size + i] = nonce_encoded[8 - 1 - i];
+    }
+
+    int* s = sha3(0, seed, 0, header_size + 8);
+
+    // start the mix with replicated s
+    int mix[w];
+    for (int i = 0; i < mixhashes; i++) {
+        for (int j = 0; j < 16; j++) {
+            mix[i*16 + j] = s[j];
+        }
+    }
+
+    // mix in random dataset nodes
+    for (int i = 0; i < ACCESSES; i++) {
+        int p = fnv(i ^ s[0], mix[i % w]) % (n / mixhashes) * mixhashes;
+
+        int newdata[w];
+
+        for (int j = 0; j < mixhashes; j++) {
+            for (int k = 0; k < 16; k++) {
+                // look up 64 bytes in dataset
+                int *slices = dataset[p + j];
+                newdata[j * 16 + k] = slices[k];
+            }
+        }
+
+        // map(fnv, mix, newdata)
+        for (int j = 0; j < w; j++) {
+            mix[j] = fnv(mix[j], newdata[j]);
+        }
+    }
+
+    // compress mixs
+    // header_size + 8 is the size of s
+    // which will be combined with cmix
+    // so researve space in advance
+    int offset = header_size + 8;
+    int cmix[offset + (w / 4)];
+    for (int i = 0; i < w/4; i++) {
+        int k = i * 4;
+        cmix[offset + i] = fnv(fnv(fnv(mix[k], mix[k + 1]), mix[k + 2]), mix[k + 3]);
+    }
+
+    // copy s to cmix
+    for (int i = 0; i < offset; i++) {
+        cmix[i] = s[i];
+    }
+    free(s);
+
+    int *temp = sha3(1, cmix, 1, offset + (w / 4));
+    char *result = serialize_hash(temp, 8);
+    free(temp);
+
+    return result;
 }
 
 
@@ -312,7 +435,7 @@ char* get_seedhash(struct Block block) {
 //        difficulty: difficulty to mine the block
 // output: nonce, if not found in given times, return 0
 // Note: difficulty is acutally a fixed number in this function, see comment below
-uint64_t mine(int full_size, int** dataset, char* header, int difficulty) {
+uint64_t mine(int full_size, unsigned int** dataset, char* header, int header_size, int difficulty) {
     // in python: "2 ** 256 // difficulty" = 256
     // no int256 support in C, so difficulty actually is fixed in this program
     // TODO: should be fixed in the future
@@ -323,20 +446,24 @@ uint64_t mine(int full_size, int** dataset, char* header, int difficulty) {
     uint64_t nonce = genrand64_int64();
 
     int i = 0;
+    unsigned int result;
 
-    while (decode_int(hashimoto_full(full_size, dataset, header, nonce)) > 256) {
+    do {
+        if (i >= TIME_LIMIT & PRINT_RESULT) {
+            printf("tried %d times without finding solution, give up.\n", i);
+            return 0;
+        }
+
+        result = decode_int(hashimoto_full(full_size, dataset, header, header_size, nonce));
         // in python "nonce = (nonce + 1) % 2 ** 64"
         // no need to do the mod by exploiting the overflow in uint64_t
         nonce += 1;
         i += 1;
 
-        if (i > 10) {
-            printf("tried 10 times without finding solution, give up.\n");
-            return 0;
-        }
-    }
+        printf("%x\n", result);
+    } while (result > 256);
 
-    printf("tried %d times. Found solution with nonce = %x\n", i, nonce);
+    printf("tried %d times. Found solution with nonce = %lx\n", i, nonce);
 
     return nonce;
 }
@@ -350,15 +477,15 @@ int main() {
     // create byte array with header_size
     char* header = malloc(header_size);
     for (int i = 0; i < header_size; i++) {
-        header = '\0';
+        header[i] = '\0';
     }
 
     // difficulty in genesis block
     // Credit: https://lightrains.com/blogs/setup-local-ethereum-blockchain-private-testnet
     int difficulty = 0x4000;
 
-    int cache_size = 1677;
-    int full_size = 16776;
+    int cache_size = CACHE_SIZE;
+    int full_size = DATASET_SIZE;
     char* seedhash = get_seedhash(block);
     printf("Step (1/3): Make cache (around 16MB)... \n");
     unsigned int** cache = mkcache(cache_size, seedhash);
@@ -366,8 +493,8 @@ int main() {
     printf("Step (2/3): Make dataset (around 1GB)... May takes several hours to do so\n");
     unsigned int** dataset = calc_dataset(full_size, cache, cache_size);
     printf("Step (2/3) finished.\n");
-    printf("Step (3/3) mine a block...");
-    uint64_t nonce = mine(full_size, dataset, header, difficulty);
+    printf("Step (3/3) mine a block...\n");
+    uint64_t nonce = mine(full_size, dataset, header, header_size, difficulty);
     printf("Step (3/3) finished.\n");
     printf("\nAlgorithm ends.\n");
 
