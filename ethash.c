@@ -11,7 +11,7 @@
 #define CACHE_SIZE 1024     // cache size (should be around 16MB)
 #define DATASET_SIZE 10240  // dataset size (shoule be around 1GB)
 #define TIME_LIMIT  100  // maximum times of mining, will give up if reach this limit
-#define PRINT_RESULT    // if define, will print result of each try on mining
+#define PRINT_RESULT 1   // if not zero, will print result of each try on mining
 
 // fixed parameter in spec
 #define WORD_BYTES 4  // bytes in word
