@@ -10,7 +10,7 @@
 // change this for testing
 #define CACHE_SIZE 1024     // cache size (should be around 16MB)
 #define DATASET_SIZE 10240  // dataset size (shoule be around 1GB)
-#define TIME_LIMIT  100     // maximum times of mining, will give up if reach this limit
+#define TIME_LIMIT  5000     // maximum times of mining, will give up if reach this limit
 #define PRINT_RESULT        // if define, will print result of each try on mining
 
 
@@ -29,26 +29,6 @@
 #define ACCESSES 64  // number of accesses in hashimoto loop
 #define FNV_PRIME 0x01000193  // fnv() parameter
 
-
-// Credit: https://stackoverflow.com/questions/8534274/is-the-_strrev-function-not-available-in-linux
-//char *_strrev(char *str)
-//{
-//    if (!str || ! *str)
-//        return str;
-//
-//    int i = strlen(str) - 1, j = 0;
-//
-//    char ch;
-//    while (i > j)
-//    {
-//        ch = str[i];
-//        str[i] = str[j];
-//        str[j] = ch;
-//        i--;
-//        j++;
-//    }
-//    return str;
-//}
 
 // convert a byte array to int
 // input: byte array
@@ -76,10 +56,6 @@ int decode_int(char* s) {
 // output: byte array
 // note: will malloc string
 char* encode_int(int s, int pad_length) {
-    if (s == 0) {
-        return "";
-    }
-
     char hex[8];
 
     // convert s to hex string
@@ -128,10 +104,6 @@ char* encode_int(int s, int pad_length) {
 // output: 8 bytes char array
 // note: will malloc string
 char* encode_int64(uint64_t s) {
-    if (s == 0) {
-        return "";
-    }
-
     char hex[16];
 
     // convert s to hex string
@@ -180,11 +152,15 @@ char* encode_int64(uint64_t s) {
 // output: byte array
 char* serialize_hash(int* h, int length) {
     char* hash = (char*)malloc(4 * length);
-
+    char* temp;
     for (int i = 0; i < length; i++) {
-        char* temp = encode_int(h[i], 4);
+        temp = encode_int(h[i], 4);
 
-        strcat(hash, temp);
+        for (int k = 0; k < 4; k++) {
+            hash[i * 4 + k] = temp[k];
+        }
+
+        free(temp);
     }
 
     return hash;
@@ -204,7 +180,11 @@ int* deserialize_hash(char* h, int length) {
 
     for (int i = 0; i < strlen(h) / 4; i++) {
         char temp[4];
-        strncpy(temp, pos, 4);
+
+        for (int k = 0; k < 4; k++) {
+            temp[k] = pos[k];
+        }
+        pos += 4;
 
         hash[i] = decode_int(temp);
     }
@@ -219,17 +199,34 @@ int* deserialize_hash(char* h, int length) {
 // will return int array
 // l is a pointer for returned array, compute by this function
 // TODO: check malloc and free
-int* hash_words(char* h(char*, int), int size, char* x) {
+int* hash_words(int is_256, char* h(char*, int), int size, char* x) {
     char* y = h(x, size);
-    return deserialize_hash(y, 16);
+    int* result;
+    if (is_256) {
+        result = deserialize_hash(y, 8);
+    }
+    else {
+        result = deserialize_hash(y, 16);
+    }
+    free(y);
+    return result;
 }
 
 
 // same as hash_words(), but x is a int array
-int* hash_words_list(char* h(char*, int), int size, int* x) {
+int* hash_words_list(int is_256, char* h(char*, int), int size, int* x) {
     char* temp = serialize_hash(x, size);
     char* y = h(temp, size);
-    return deserialize_hash(y, 16);
+    int* result;
+    if (is_256) {
+        result = deserialize_hash(y, 8);
+    }
+    else {
+        result = deserialize_hash(y, 16);
+    }
+    free(temp);
+    // free y here will leads to segment fault
+    return result;
 }
 
 
@@ -259,15 +256,15 @@ char* sha3_256_wrapper(char* x, int size) {
 int* sha3(int is_256, void* x, int is_list, int size) {
     if (is_256) {
         if (is_list != 0) {
-            return hash_words_list(sha3_256_wrapper, size, (int*)x);
+            return hash_words_list(is_256, sha3_256_wrapper, size, (int*)x);
         }
-        return hash_words(sha3_256_wrapper, size, (char*)x);
+        return hash_words(is_256, sha3_256_wrapper, size, (char*)x);
     }
     else {
         if (is_list != 0) {
-            return hash_words_list(sha3_512_wrapper, size, (int*)x);
+            return hash_words_list(is_256, sha3_512_wrapper, size, (int*)x);
         }
-        return hash_words(sha3_512_wrapper, size, (char*)x);
+        return hash_words(is_256, sha3_512_wrapper, size, (char*)x);
     }
 }
 
@@ -362,8 +359,8 @@ unsigned int** mkcache(int cache_size, char* seed) {
 // to produce final result for given header and nonce
 // main loop of the algorithm
 // if dataset is NULL, will use file "dataset" instead
-char* hashimoto_full(int full_size, unsigned int** dataset, char* header, int header_size, 
-                     uint64_t nonce, FILE* fp) {
+char* hashimoto_full(int full_size, unsigned int** dataset, char* header, int header_size,
+    uint64_t nonce, FILE* fp) {
     int n = full_size / HASH_BYTES;
     int w = MIX_BYTES / WORD_BYTES;
     int mixhashes = MIX_BYTES / HASH_BYTES;
@@ -385,7 +382,7 @@ char* hashimoto_full(int full_size, unsigned int** dataset, char* header, int he
     int mix[w];
     for (int i = 0; i < mixhashes; i++) {
         for (int j = 0; j < 16; j++) {
-            mix[i*16 + j] = s[j];
+            mix[i * 16 + j] = s[j];
         }
     }
 
@@ -424,7 +421,7 @@ char* hashimoto_full(int full_size, unsigned int** dataset, char* header, int he
     // so researve space in advance
     int offset = header_size + 8;
     int cmix[offset + (w / 4)];
-    for (int i = 0; i < w/4; i++) {
+    for (int i = 0; i < w / 4; i++) {
         int k = i * 4;
         cmix[offset + i] = fnv(fnv(fnv(mix[k], mix[k + 1]), mix[k + 2]), mix[k + 3]);
     }
@@ -435,8 +432,8 @@ char* hashimoto_full(int full_size, unsigned int** dataset, char* header, int he
     }
     free(s);
 
-    int *temp = sha3(1, cmix, 1, offset + (w / 4));
-    char *result = serialize_hash(temp, 8);
+    int* temp = sha3(1, cmix, 1, offset + (w / 4));
+    char* result = serialize_hash(temp, 8);
     free(temp);
 
     return result;
@@ -576,7 +573,7 @@ void save_dataset() {
     printf("Step (2/3) finished.\n");
     printf("Step (3/3) save dataset to file.\n");
     FILE* fp;
-    
+
     /* Open file for writing */
     if ((fp = fopen("dataset", "w")) == NULL) {
         printf("Cannot open file.\n");
