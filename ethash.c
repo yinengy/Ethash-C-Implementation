@@ -10,8 +10,9 @@
 // change this for testing
 #define CACHE_SIZE 1024     // cache size (should be around 16MB)
 #define DATASET_SIZE 10240  // dataset size (shoule be around 1GB)
-#define TIME_LIMIT  100  // maximum times of mining, will give up if reach this limit
-#define PRINT_RESULT 1   // if not zero, will print result of each try on mining
+#define TIME_LIMIT  100     // maximum times of mining, will give up if reach this limit
+#define PRINT_RESULT        // if define, will print result of each try on mining
+
 
 // fixed parameter in spec
 #define WORD_BYTES 4  // bytes in word
@@ -233,10 +234,19 @@ int* hash_words_list(char* h(char*, int), int size, int* x) {
 
 
 // A warpper for sha3_HashBuffer() in lib/sha3.h
-// will be used by sha3_512 as a function pointer
+// will be used by sha3 as a function pointer
 char* sha3_512_wrapper(char* x, int size) {
     char* out = malloc(512);
     sha3_HashBuffer(512, SHA3_FLAGS_KECCAK, x, size, out, 512);
+    return out;
+}
+
+
+// A warpper for sha3_HashBuffer() in lib/sha3.h
+// will be used by sha3 as a function pointer
+char* sha3_256_wrapper(char* x, int size) {
+    char* out = malloc(256);
+    sha3_HashBuffer(256, SHA3_FLAGS_KECCAK, x, size, out, 256);
     return out;
 }
 
@@ -247,10 +257,18 @@ char* sha3_512_wrapper(char* x, int size) {
 //        is_list: if is_list != 0, it means x is a int array
 //        size: size of x
 int* sha3(int is_256, void* x, int is_list, int size) {
-    if (is_list != 0) {
-        return hash_words_list(sha3_512_wrapper, size, (int*)x);
+    if (is_256) {
+        if (is_list != 0) {
+            return hash_words_list(sha3_256_wrapper, size, (int*)x);
+        }
+        return hash_words(sha3_256_wrapper, size, (char*)x);
     }
-    return hash_words(sha3_512_wrapper, size, (char*)x);
+    else {
+        if (is_list != 0) {
+            return hash_words_list(sha3_512_wrapper, size, (int*)x);
+        }
+        return hash_words(sha3_512_wrapper, size, (char*)x);
+    }
 }
 
 
@@ -340,7 +358,12 @@ unsigned int** mkcache(int cache_size, char* seed) {
     return o;
 }
 
-char* hashimoto_full(int full_size, unsigned int** dataset, char* header, int header_size, uint64_t nonce) {
+// aggregate data from the full dataset 
+// to produce final result for given header and nonce
+// main loop of the algorithm
+// if dataset is NULL, will use file "dataset" instead
+char* hashimoto_full(int full_size, unsigned int** dataset, char* header, int header_size, 
+                     uint64_t nonce, FILE* fp) {
     int n = full_size / HASH_BYTES;
     int w = MIX_BYTES / WORD_BYTES;
     int mixhashes = MIX_BYTES / HASH_BYTES;
@@ -373,10 +396,19 @@ char* hashimoto_full(int full_size, unsigned int** dataset, char* header, int he
         int newdata[w];
 
         for (int j = 0; j < mixhashes; j++) {
-            for (int k = 0; k < 16; k++) {
-                // look up 64 bytes in dataset
-                int *slices = dataset[p + j];
-                newdata[j * 16 + k] = slices[k];
+            // look up 64 bytes in dataset
+            if (!dataset) {
+                fseek(fp, (p + j) * 64, SEEK_SET);
+                if (fread(newdata + (j * 16), sizeof(int), 16, fp) != 16) {
+                    printf("File read error.");
+                    exit(0);
+                }
+            }
+            else {
+                int* slices = dataset[p + j];
+                for (int k = 0; k < 16; k++) {
+                    newdata[j * 16 + k] = slices[k];
+                }
             }
         }
 
@@ -430,7 +462,7 @@ char* get_seedhash(struct Block block) {
 
 // mine a block
 // input: full_size: size of dataset
-//        dataset: int array
+//        dataset: int array, it is it null, will looking for file "dataset"
 //        header: header of the block
 //        difficulty: difficulty to mine the block
 // output: nonce, if not found in given times, return 0
@@ -443,33 +475,50 @@ uint64_t mine(int full_size, unsigned int** dataset, char* header, int header_si
     int target = 256;
 
     // randint(0, 2 ** 64)
+    init_genrand64(0);
     uint64_t nonce = genrand64_int64();
 
     int i = 0;
     unsigned int result;
 
+    // exisiting dataset will be used if dataset = NULL
+    FILE* fp = NULL;
+    if (!dataset) {
+        if ((fp = fopen("dataset", "rb")) == NULL) {
+            printf("Cannot open file.\n");
+            return 0;
+        }
+    }
+
     do {
-        if (i >= TIME_LIMIT & PRINT_RESULT) {
+        if (i >= TIME_LIMIT) {
             printf("tried %d times without finding solution, give up.\n", i);
             return 0;
         }
 
-        result = decode_int(hashimoto_full(full_size, dataset, header, header_size, nonce));
+        result = decode_int(hashimoto_full(full_size, dataset, header, header_size, nonce, fp));
         // in python "nonce = (nonce + 1) % 2 ** 64"
         // no need to do the mod by exploiting the overflow in uint64_t
         nonce += 1;
         i += 1;
 
+#ifdef PRINT_RESULT
         printf("%x\n", result);
+#endif
     } while (result > 256);
 
     printf("tried %d times. Found solution with nonce = %lx\n", i, nonce);
 
+    if (!dataset) {
+        fclose(fp);
+    }
     return nonce;
 }
 
 
-int main() {
+// Run the whole algorithm
+// gen cache -> gen dataset -> mine on dataset
+void test_whole_algortihm() {
     int header_size = 508 + 8 * 5;
 
     struct Block block = { 1 };
@@ -487,6 +536,7 @@ int main() {
     int cache_size = CACHE_SIZE;
     int full_size = DATASET_SIZE;
     char* seedhash = get_seedhash(block);
+    printf("Target: make dataset and mine it.\n");
     printf("Step (1/3): Make cache (around 16MB)... \n");
     unsigned int** cache = mkcache(cache_size, seedhash);
     printf("Step (1/3) finished.\n");
@@ -496,7 +546,91 @@ int main() {
     printf("Step (3/3) mine a block...\n");
     uint64_t nonce = mine(full_size, dataset, header, header_size, difficulty);
     printf("Step (3/3) finished.\n");
-    printf("\nAlgorithm ends.\n");
+    printf("\nProgram ends.\n");
+}
 
+
+// generate and save dataset to file "dataset" for future use
+void save_dataset() {
+    int header_size = 508 + 8 * 5;
+
+    struct Block block = { 1 };
+
+    // create byte array with header_size
+    char* header = malloc(header_size);
+    for (int i = 0; i < header_size; i++) {
+        header[i] = '\0';
+    }
+
+    int cache_size = CACHE_SIZE;
+    int full_size = DATASET_SIZE;
+    int loop_times = full_size / HASH_BYTES;
+
+    char* seedhash = get_seedhash(block);
+    printf("Target: make dataset and save it to a file.\n");
+    printf("Step (1/3): Make cache (around 16MB)... \n");
+    unsigned int** cache = mkcache(cache_size, seedhash);
+    printf("Step (1/3) finished.\n");
+    printf("Step (2/3): Make dataset (around 1GB)... May takes several hours to do so\n");
+    unsigned int** dataset = calc_dataset(full_size, cache, cache_size);
+    printf("Step (2/3) finished.\n");
+    printf("Step (3/3) save dataset to file.\n");
+    FILE* fp;
+    
+    /* Open file for writing */
+    if ((fp = fopen("dataset", "w")) == NULL) {
+        printf("Cannot open file.\n");
+        return;
+    }
+
+    /* write int array to the file*/
+    for (int i = 0; i < loop_times; i++) {
+        if (fwrite(dataset[i], sizeof(int), 16, fp) != 16) {
+            printf("File read error.");
+            return;
+        }
+    }
+
+    fclose(fp);
+
+    printf("Step (3/3) finished.\n");
+    printf("\nProgram ends.\n");
+}
+
+
+// read file "dataset" as
+// size of dataset should match parameter in this program, error otherwise.
+void test_with_dataset() {
+    int header_size = 508 + 8 * 5;
+
+    // create byte array with header_size
+    char* header = malloc(header_size);
+    for (int i = 0; i < header_size; i++) {
+        header[i] = '\0';
+    }
+
+    // difficulty in genesis block
+    // Credit: https://lightrains.com/blogs/setup-local-ethereum-blockchain-private-testnet
+    int difficulty = 0x4000;
+
+    int cache_size = CACHE_SIZE;
+    int full_size = DATASET_SIZE;
+    printf("Target: use existing dataset and mine it.\n");
+    printf("Start mining...\n");
+    uint64_t nonce = mine(full_size, NULL, header, header_size, difficulty);
+    printf("Finished.\n");
+    printf("\nProgram ends.\n");
+}
+
+int main() {
+#ifdef GEN_DATASET
+    save_dataset();
+    return 0;
+#endif
+#ifdef USE_DATASET
+    test_with_dataset();
+    return 0;
+#endif
+    test_whole_algortihm();
     return 0;
 }
