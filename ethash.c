@@ -9,9 +9,9 @@
 
 // change this for testing
 #define CACHE_SIZE 1024     // cache size (should be around 16MB)
-#define DATASET_SIZE 10240  // dataset size (shoule be around 1GB)
+#define DATASET_SIZE 300*1024*1024  // dataset size (shoule be around 1GB)
 #define TIME_LIMIT  100     // maximum times of mining, will give up if reach this limit
-#define PRINT_RESULT        // if define, will print result of each try on mining
+// #define PRINT_RESULT        // if define, will print result of each try on mining
 
 
 // fixed parameter in spec
@@ -277,7 +277,7 @@ struct Block {
 };
 
 int fnv(int v1, int v2) {
-    return (int)pow((double)(((v1 * FNV_PRIME) ^ v2) % 2), (double)32);
+    return v1 * FNV_PRIME ^ v2;
 }
 
 // generate one element in dataset
@@ -468,11 +468,11 @@ char* get_seedhash(struct Block block) {
 // output: nonce, if not found in given times, return 0
 // Note: difficulty is acutally a fixed number in this function, see comment below
 uint64_t mine(int full_size, unsigned int** dataset, char* header, int header_size, int difficulty) {
-    // in python: "2 ** 256 // difficulty" = 256
+    // in python: "2 ** 256 // difficulty"
     // no int256 support in C, so difficulty actually is fixed in this program
     // TODO: should be fixed in the future
     // currently can only do this calculation by hand
-    int target = 256;
+    int target = 1;
 
     // randint(0, 2 ** 64)
     init_genrand64(0);
@@ -505,7 +505,7 @@ uint64_t mine(int full_size, unsigned int** dataset, char* header, int header_si
 #ifdef PRINT_RESULT
         printf("%x\n", result);
 #endif
-    } while (result > 256);
+    } while (1);
 
     printf("tried %d times. Found solution with nonce = %lx\n", i, nonce);
 
@@ -609,6 +609,8 @@ void test_with_dataset() {
         header[i] = '\0';
     }
 
+    char* hashed_header = serialize_hash(sha3(1, header, 0, header_size), 8);
+
     // difficulty in genesis block
     // Credit: https://lightrains.com/blogs/setup-local-ethereum-blockchain-private-testnet
     int difficulty = 0x4000;
@@ -617,7 +619,7 @@ void test_with_dataset() {
     int full_size = DATASET_SIZE;
     printf("Target: use existing dataset and mine it.\n");
     printf("Start mining...\n");
-    uint64_t nonce = mine(full_size, NULL, header, header_size, difficulty);
+    uint64_t nonce = mine(full_size, NULL, header, 32, difficulty);
     printf("Finished.\n");
     printf("\nProgram ends.\n");
 }
